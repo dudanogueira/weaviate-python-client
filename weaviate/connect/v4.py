@@ -112,6 +112,7 @@ class _Connection(_ConnectionBase):
         self.__trust_env = trust_env
         self._weaviate_version = _ServerVersion.from_string("")
         self.__connected = False
+        self._skip_init_checks = False
 
         self._headers = {"content-type": "application/json"}
         if additional_headers is not None:
@@ -221,6 +222,7 @@ class _Connection(_ConnectionBase):
                 None, connect=self.timeout_config.query, read=self.timeout_config.insert
             ),
             mounts=self.__make_mounts("sync"),
+            verify=not self._skip_init_checks
         )
 
     def __make_async_client(self) -> AsyncClient:
@@ -230,6 +232,7 @@ class _Connection(_ConnectionBase):
                 None, connect=self.timeout_config.query, read=self.timeout_config.insert
             ),
             mounts=self.__make_mounts("async"),
+            verify=not self._skip_init_checks
         )
 
     def __make_clients(self) -> None:
@@ -238,6 +241,7 @@ class _Connection(_ConnectionBase):
     def _create_clients(
         self, auth_client_secret: Optional[AuthCredentials], skip_init_checks: bool
     ) -> None:
+        self._skip_init_checks = skip_init_checks
         # API keys are separate from OIDC and do not need any config from weaviate
         if auth_client_secret is not None and isinstance(auth_client_secret, AuthApiKey):
             self.__make_clients()
