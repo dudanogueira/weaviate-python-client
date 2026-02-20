@@ -7,6 +7,7 @@ from _pytest.fixtures import SubRequest
 import weaviate
 import weaviate.classes as wvc
 from integration.conftest import (
+    ClientFactory,
     CollectionFactory,
     OpenAICollection,
     _sanitize_collection_name,
@@ -1950,3 +1951,91 @@ def test_object_ttl_update(collection_factory: CollectionFactory) -> None:
     )
     conf = collection.config.get()
     assert conf.object_ttl_config is None
+
+
+def test_object_ttl_roundtrip_from_dict(
+    collection_factory: CollectionFactory, client_factory: ClientFactory
+) -> None:
+    dummy = collection_factory("dummy")
+    if dummy._connection._weaviate_version.is_lower_than(1, 35, 0):
+        pytest.skip("object ttl is not supported in Weaviate versions lower than 1.35.0")
+
+    client = client_factory()
+
+    # (schema_to_create, expected_object_ttl_config_dict)
+    test_cases = [
+        # deleteOn: _creationTimeUnix
+        (
+            {
+                "class": "CollectionTTLRoundtripCreation",
+                "objectTtlConfig": {
+                    "enabled": True,
+                    "defaultTtl": 60,
+                    "deleteOn": "_creationTimeUnix",
+                    "filterExpiredObjects": True,
+                },
+            },
+            {
+                "enabled": True,
+                "defaultTtl": 60,
+                "deleteOn": "_creationTimeUnix",
+                "filterExpiredObjects": True,
+            },
+        ),
+        # deleteOn: _lastUpdateTimeUnix
+        (
+            {
+                "class": "CollectionTTLRoundtripUpdate",
+                "objectTtlConfig": {
+                    "enabled": True,
+                    "defaultTtl": 3600,
+                    "deleteOn": "_lastUpdateTimeUnix",
+                    "filterExpiredObjects": True,
+                },
+            },
+            {
+                "enabled": True,
+                "defaultTtl": 3600,
+                "deleteOn": "_lastUpdateTimeUnix",
+                "filterExpiredObjects": True,
+            },
+        ),
+        # deleteOn: custom date property
+        (
+            {
+                "class": "CollectionTTLRoundtripDateProp",
+                "properties": [
+                    {
+                        "name": "reference_date",
+                        "dataType": ["date"],
+                    }
+                ],
+                "objectTtlConfig": {
+                    "enabled": True,
+                    "defaultTtl": 123,
+                    "deleteOn": "reference_date",
+                    "filterExpiredObjects": True,
+                },
+            },
+            {
+                "enabled": True,
+                "defaultTtl": 123,
+                "deleteOn": "reference_date",
+                "filterExpiredObjects": True,
+            },
+        ),
+    ]
+
+    for schema, expected_ttl_dict in test_cases:
+        name = schema["class"]
+        client.collections.delete(name)
+        try:
+            client.collections.create_from_dict(schema)
+            config = client.collections.export_config(name)
+            assert config.object_ttl_config is not None, f"object_ttl_config is None for {name}"
+            assert config.object_ttl_config.to_dict() == expected_ttl_dict, (
+                f"Round-trip mismatch for {name}: "
+                f"got {config.object_ttl_config.to_dict()}, expected {expected_ttl_dict}"
+            )
+        finally:
+            client.collections.delete(name)

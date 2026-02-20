@@ -16,6 +16,7 @@ from weaviate.collections.classes.config import (
     _RerankerProvider,
     _VectorizerConfigCreate,
 )
+from weaviate.collections.classes.config_methods import _get_object_ttl_config
 from weaviate.collections.classes.config_named_vectors import _NamedVectorConfigCreate
 from weaviate.collections.classes.config_vectorizers import (
     Multi2VecField,
@@ -2621,9 +2622,9 @@ TEST_OBJECT_TTL_CONFIG_TO_DICT_PARAMETERS = [
         ),
         {
             "enabled": True,
-            "timeToLive": 86400,
+            "defaultTtl": 86400,
             "filterExpiredObjects": True,
-            "deleteOn": "creationTime",
+            "deleteOn": "_creationTimeUnix",
         },
     ),
     # delete_by_update_time
@@ -2636,9 +2637,9 @@ TEST_OBJECT_TTL_CONFIG_TO_DICT_PARAMETERS = [
         ),
         {
             "enabled": True,
-            "timeToLive": 604800,
+            "defaultTtl": 604800,
             "filterExpiredObjects": False,
-            "deleteOn": "updateTime",
+            "deleteOn": "_lastUpdateTimeUnix",
         },
     ),
     # delete_by_date_property
@@ -2651,7 +2652,7 @@ TEST_OBJECT_TTL_CONFIG_TO_DICT_PARAMETERS = [
         ),
         {
             "enabled": True,
-            "timeToLive": 5400,
+            "defaultTtl": 5400,
             "filterExpiredObjects": True,
             "deleteOn": "releaseDate",
         },
@@ -2667,7 +2668,7 @@ TEST_OBJECT_TTL_CONFIG_TO_DICT_PARAMETERS = [
         {
             "enabled": True,
             "filterExpiredObjects": False,
-            "deleteOn": "creationTime",
+            "deleteOn": "_creationTimeUnix",
         },
     ),
     # negative offset (delete_by_date_property with offset before date)
@@ -2680,7 +2681,7 @@ TEST_OBJECT_TTL_CONFIG_TO_DICT_PARAMETERS = [
         ),
         {
             "enabled": True,
-            "timeToLive": -3600,
+            "defaultTtl": -3600,
             "filterExpiredObjects": True,
             "deleteOn": "eventDate",
         },
@@ -2692,6 +2693,45 @@ TEST_OBJECT_TTL_CONFIG_TO_DICT_PARAMETERS = [
 def test_object_ttl_config_to_dict(ttl_config: _ObjectTTLConfig, expected: dict) -> None:
     """Test that _ObjectTTLConfig.to_dict() properly converts timedelta to seconds."""
     assert ttl_config.to_dict() == expected
+
+
+TEST_OBJECT_TTL_ROUNDTRIP_PARAMETERS = [
+    # _creationTimeUnix round-trip
+    {
+        "objectTtlConfig": {
+            "enabled": True,
+            "defaultTtl": 60,
+            "deleteOn": "_creationTimeUnix",
+            "filterExpiredObjects": True,
+        }
+    },
+    # _lastUpdateTimeUnix round-trip
+    {
+        "objectTtlConfig": {
+            "enabled": True,
+            "defaultTtl": 3600,
+            "deleteOn": "_lastUpdateTimeUnix",
+            "filterExpiredObjects": True,
+        }
+    },
+    # custom date property round-trip
+    {
+        "objectTtlConfig": {
+            "enabled": True,
+            "defaultTtl": 123,
+            "deleteOn": "reference_date",
+            "filterExpiredObjects": True,
+        }
+    },
+]
+
+
+@pytest.mark.parametrize("schema", TEST_OBJECT_TTL_ROUNDTRIP_PARAMETERS)
+def test_object_ttl_config_roundtrip(schema: dict) -> None:
+    """Test that deserializing an objectTtlConfig and calling to_dict() produces the original dict."""
+    ttl_config = _get_object_ttl_config(schema)
+    assert ttl_config is not None
+    assert ttl_config.to_dict() == schema["objectTtlConfig"]
 
 
 def test_nested_property_with_id_name_is_allowed() -> None:
